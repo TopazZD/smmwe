@@ -42,7 +42,6 @@ class UserData:
 class SMMWEClient():
     def __init__(self):
         self.auth = Auth()
-        self.user = None
 
     def login(self, username:str, password:str):
         """Logs into the SMM:WE server\n
@@ -56,15 +55,20 @@ class SMMWEClient():
             "password": password
         }
 
-        login_response = requests.post(login_url, login_data).text
+        login_response = requests.post(login_url, login_data, headers={"User-Agent":"GameMaker HTTP"}).text
         login_dict:dict = json.loads(login_response)
-
         if "error_type" in login_dict.keys():
             if login_dict["error_type"] == "006":
                 raise UserNotFound(f"User '{username}' not found")
 
-            if login_dict["error_type"] == "007":
+            if login_dict["error_type"] == "010":
+                raise NotInEK("You must be in the Engine Kingdom server")
+
+            if login_dict["error_type"].startswith("007"):
                 raise IncorrectPassword(f"Password for '{username}' is incorrect")
+
+            if login_dict["error_type"].startswith("401"):
+                raise BlockedAccount("That account is blocked")
 
         self.auth.code = login_dict["auth_code"]
         self.auth.uid = login_dict["id"]
@@ -94,9 +98,9 @@ class SMMWEClient():
             "swe":level_data
         }
 
-        return requests.post(url, data)
+        return requests.post(url, data, proxies=[self.proxy])
 
-    def upload_level_data(self, name:str, description:str, aparience:int, enviroment:int, tags:list[str,str], level_data:bytes | dict, encoded:bool = True):
+    def upload_level_data(self, name:str, description:str, aparience:int, enviroment:int, tags:str, level_data:bytes | dict, encoded:bool = True):
         """Uploads a level in JSON data or encoded in base64\n
         To upload a level file use upload_level_file()"""
 
@@ -115,18 +119,18 @@ class SMMWEClient():
             "desc":description,
             "aparience":aparience,
             "entorno":enviroment,
-            "tags":tags[0]+","+tags[1],
+            "tags":tags,
             "swe":level_data
         }
 
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
-    def level_url_from_id(id:str):
+    def level_url_from_id(self, id:str):
         """Get the Discord URL of a level file using its ID\n
         Does not require to be logged in"""
 
         url = BASE_HOST+"/load_link/"+id
-        return requests.get(url).text.replace("\"", "")
+        return requests.get(url, headers={"User-Agent":"GameMaker HTTP"}).text.replace("\"", "")
 
     def like_level(self, level_id:str):
         """Add a like to a level\n
@@ -140,7 +144,7 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
     def dislike_level(self, level_id:str):
         """Add a dislike to a level\n
@@ -154,7 +158,7 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
     def add_death(self, level_id:str):
         """Add a death count to a level"""
@@ -166,7 +170,7 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
     def add_attempt(self, level_id:str):
         """Add an attempt count to a level"""
@@ -179,7 +183,7 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
     def add_victory(self, level_id:str, time_ms:int):
         """Add a victory to a level\n
@@ -193,7 +197,7 @@ class SMMWEClient():
             "discord_id":self.auth.uid,
             "tiempo":str(time_ms)
         }
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
     def get_leaderboard(self, auth:Auth) -> dict:
         """Fetches the leaderboard as JSON data"""
@@ -206,7 +210,7 @@ class SMMWEClient():
             "auth_code":auth.code,
             "discord_id":auth.uid
         }
-        return requests.post(url, data).json()
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"}).json()
 
     def delete_level(self, level_id:str):
         """Deletes a level uploaded by the user"""
@@ -219,9 +223,9 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        return requests.post(url, data)
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
 
-    def search_levels(self, page:int = 1, *, title:str = None, author_alias:str = None, tags:tuple[str,str] = ("", ""), liked_by:str = None) -> list:
+    def search_levels(self, page:int = 1, *, title:str = None, author_alias:str = None, author_id:str = None, tags:tuple[str,str] = ("", ""), liked_by:str = None) -> list:
         """Search levels with specified filters\n
         TODO: Add more search parameters"""
 
@@ -233,7 +237,6 @@ class SMMWEClient():
             "discord_id": self.auth.uid,
             "auth_code": self.auth.code,
             "page":str(page),
-            "tags":f"{tags[0]},{tags[1]}"
         }
         if title:
             data.update({"title":title})
@@ -241,7 +244,11 @@ class SMMWEClient():
             data.update({"author":author_alias})
         if liked_by:
             data.update({"liked":liked_by})
-        resp:dict = requests.post(url, data).json()
+        if tags != ("", ""):
+            data.update({"tags":f"{tags[0]},{tags[1]}"})
+        if author_id:
+            data.update({"author_id":author_id})
+        resp:dict = requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"}).json()
         if "error_type" in resp.keys():
             return []
         else:
@@ -258,7 +265,7 @@ class SMMWEClient():
             if decoded:
                 data = base64.b64decode(data).decode()
                 data = json.dumps(json.loads(data), indent=4).encode()
-            lf.write(data)
+            lf.write(data, headers={"User-Agent":"GameMaker HTTP"})
 
     def get_user_data(self) -> UserData:
         """Fetches the user's data"""
@@ -271,7 +278,7 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        raw_data:dict = requests.post(url, data).json()
+        raw_data:dict = requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"}).json()
         user_data = UserData()
         user_data.user_id = raw_data["discord_id"]
         user_data.easy_progress = raw_data["easy_progress"]
@@ -319,7 +326,7 @@ class SMMWEClient():
             "record":record,
             "lives":lives
         }
-        r =  requests.post(url, data)
+        r =  requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"})
         if "error_type" in r.json().keys():
             return False
         return True
@@ -335,8 +342,9 @@ class SMMWEClient():
             "auth_code":self.auth.code,
             "discord_id":self.auth.uid
         }
-        return requests.post(url, data).json()
+        return requests.post(url, data, headers={"User-Agent":"GameMaker HTTP"}).json()
 
 # -----------------------------------------------------------------#
+
 if __name__=="__main__":
     print("smmwe should be imported, not directly run")
