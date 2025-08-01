@@ -347,4 +347,5 @@ class SMMWEClient():
 # -----------------------------------------------------------------#
 
 if __name__=="__main__":
-    print("smmwe should be imported, not directly run")
+    print("smmwelib should be imported, not directly run")
+
