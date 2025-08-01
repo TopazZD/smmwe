@@ -1,11 +1,11 @@
-# smmwe
+# smmwelib
 A python script made to interact with the SMM:WE api
 
 Usage:
 ```py
-import smmwe
+import smmwelib
 
-client = smmwe.SMMWEClient()
+client = smmwelib.SMMWEClient()
 
 client.login("username", "password")
 
