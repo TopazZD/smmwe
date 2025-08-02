@@ -14,6 +14,12 @@ class IncorrectPassword(Exception):
 class NotLoggedIn(Exception):
     pass
 
+class NotInEK(Exception):
+    pass
+
+class BlockedAccount(Exception):
+    pass
+
 # -------------------- Classes -------------------- #
 
 class Auth:
